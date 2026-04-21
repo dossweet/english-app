@@ -192,6 +192,7 @@ export default function Home() {
   const [learnedCount, setLearnedCount] = useState(0);
   const [todayLearned, setTodayLearned] = useState<number[]>([]);
   const [isDark, setIsDark] = useState(false);
+  const [showRedDot, setShowRedDot] = useState(false);
 
   // Load from localStorage
   useEffect(() => {
@@ -206,7 +207,25 @@ export default function Home() {
     }
     const storedCount = localStorage.getItem('english-learned-count');
     if (storedCount) setLearnedCount(parseInt(storedCount));
-  }, []);
+
+    // Check if today has completed learning
+    const lastDate = localStorage.getItem('english-learned-date');
+    const today = new Date().toLocaleDateString('zh-CN');
+    if (lastDate !== today) {
+      // It's a new day, check if all expressions learned yesterday to preserve streak
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toLocaleDateString('zh-CN');
+      const learnedYesterday = localStorage.getItem(`english-learned-${yesterdayStr}`);
+      // For now, just check if today is incomplete to show red dot
+      const allLearned = learnedCount >= expressions.length;
+      setShowRedDot(!allLearned);
+    } else {
+      // Same day, check completion
+      const allLearned = learnedCount >= expressions.length;
+      setShowRedDot(!allLearned);
+    }
+  }, [learnedCount]);
 
   // Filter expressions
   const filtered = activeCategory === 'all' 
@@ -226,15 +245,21 @@ export default function Home() {
   const toggleExpand = (id: number) => {
     if (expandedId === id) {
       setExpandedId(null);
-      // Mark as learned
-      if (!todayLearned.includes(id)) {
-        const newLearned = [...todayLearned, id];
-        setTodayLearned(newLearned);
-        setLearnedCount(prev => prev + 1);
-        localStorage.setItem('english-learned', JSON.stringify(newLearned));
-        localStorage.setItem('english-learned-count', (learnedCount + 1).toString());
-      }
     } else {
+      const newLearned = todayLearned.includes(id) ? todayLearned : [...todayLearned, id];
+      if (!todayLearned.includes(id)) {
+        setTodayLearned(newLearned);
+        const today = new Date().toLocaleDateString('zh-CN');
+        // Save today's learned expressions
+        localStorage.setItem('english-learned-date', today);
+        localStorage.setItem(`english-learned-${today}`, JSON.stringify(newLearned));
+        localStorage.setItem('english-learned', JSON.stringify(newLearned));
+        const newCount = learnedCount + 1;
+        setLearnedCount(newCount);
+        localStorage.setItem('english-learned-count', newCount.toString());
+        // Update red dot
+        setShowRedDot(newCount < expressions.length);
+      }
       setExpandedId(id);
     }
   };
@@ -259,10 +284,13 @@ export default function Home() {
           </div>
           <button
             onClick={toggleDark}
-            className="text-2xl"
+            className="text-2xl relative"
             title={isDark ? '切换日间模式' : '切换夜间模式'}
           >
             {isDark ? '☀️' : '🌙'}
+            {showRedDot && (
+              <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white animate-pulse" />
+            )}
           </button>
         </div>
         
