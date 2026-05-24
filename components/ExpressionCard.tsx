@@ -118,7 +118,7 @@ function ExpressionCard({
                 className="text-xs px-2 py-0.5 rounded-full text-white"
                 style={{ background: categoryColor[expression.category] }}
               >
-                {categories.find(c => c.id === expression.category)?.label}
+                {categories.find((c: any) => c.id === expression.category)?.label}
               </span>
             </div>
           </div>
@@ -329,7 +329,7 @@ export default function Home() {
 
       {/* Category Tabs */}
       <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-        {categories.map(cat => (
+        {categories.map((cat: any) => (
           <button
             key={cat.id}
             onClick={() => setActiveCategory(cat.id)}

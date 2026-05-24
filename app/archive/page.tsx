@@ -59,7 +59,7 @@ export default function ArchivePage() {
   };
 
   const ExpressionRow = ({ expr }: { expr: Expression }) => {
-    const cat = categories.find(c => c.id === expr.category);
+    const cat = categories.find((c: any) => c.id === expr.category);
     return (
       <div 
         className="flex items-center justify-between p-4 rounded-xl"
