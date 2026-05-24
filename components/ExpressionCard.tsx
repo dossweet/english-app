@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { expressions, categories, type Expression } from '@/data/expressions';
+import { getTodaysIds, getTodayKey, DAILY_COUNT } from '@/lib/daily';
 
 function CategoryBadge({ tag }: { tag: string }) {
   return (
@@ -193,46 +194,60 @@ export default function Home() {
   const [todayLearned, setTodayLearned] = useState<number[]>([]);
   const [isDark, setIsDark] = useState(false);
   const [showRedDot, setShowRedDot] = useState(false);
+  const [todaysIds, setTodaysIds] = useState<number[]>([]);
+  const [dateKey, setDateKey] = useState('');
+
+  // 计算今日词条——放在 state 里确保 hydration 一致
+  const todayDate = new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' });
 
   // Load from localStorage
   useEffect(() => {
     const stored = localStorage.getItem('english-favorites');
     if (stored) setFavorites(JSON.parse(stored));
-    const learned = localStorage.getItem('english-learned');
-    if (learned) setTodayLearned(JSON.parse(learned));
     const dark = localStorage.getItem('english-dark');
     if (dark === 'true') {
       setIsDark(true);
       document.documentElement.classList.add('dark');
     }
-    const storedCount = localStorage.getItem('english-learned-count');
-    if (storedCount) setLearnedCount(parseInt(storedCount));
 
-    // Check if today has completed learning
-    const lastDate = localStorage.getItem('english-learned-date');
-    const today = new Date().toLocaleDateString('zh-CN');
-    if (lastDate !== today) {
-      // It's a new day, check if all expressions learned yesterday to preserve streak
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toLocaleDateString('zh-CN');
-      const learnedYesterday = localStorage.getItem(`english-learned-${yesterdayStr}`);
-      // For now, just check if today is incomplete to show red dot
-      const allLearned = learnedCount >= expressions.length;
-      setShowRedDot(!allLearned);
+    // 计算今日词条 ID（仅客户端执行）
+    const ids = getTodaysIds(expressions.length);
+    setTodaysIds(ids);
+    const todayKey = getTodayKey();
+    setDateKey(todayKey);
+
+    // 加载今日学习记录
+    const todayLearnedKey = `english-learned-${todayKey}`;
+    const todayLearnedStored = localStorage.getItem(todayLearnedKey);
+    if (todayLearnedStored) {
+      const parsed = JSON.parse(todayLearnedStored);
+      setTodayLearned(parsed);
+      setLearnedCount(parsed.length);
     } else {
-      // Same day, check completion
-      const allLearned = learnedCount >= expressions.length;
-      setShowRedDot(!allLearned);
+      setTodayLearned([]);
+      setLearnedCount(0);
     }
-  }, [learnedCount]);
 
-  // Filter expressions
+    // 红点：今日任务未完成
+    setShowRedDot(true);
+    const storedCount = localStorage.getItem(todayLearnedKey);
+    if (storedCount) {
+      const parsed = JSON.parse(storedCount);
+      if (parsed.length >= DAILY_COUNT) {
+        setShowRedDot(false);
+      }
+    }
+  }, []);
+
+  // 今日展示的词条
+  const todaysExpressions = todaysIds
+    .map(id => expressions.find(e => e.id === id))
+    .filter((e): e is Expression => e !== undefined);
+
+  // 按分类过滤
   const filtered = activeCategory === 'all' 
-    ? expressions 
-    : expressions.filter(e => e.category === activeCategory);
-
-  const today = new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' });
+    ? todaysExpressions 
+    : todaysExpressions.filter(e => e.category === activeCategory);
 
   const toggleFavorite = (id: number) => {
     const newFavorites = favorites.includes(id)
@@ -245,23 +260,20 @@ export default function Home() {
   const toggleExpand = (id: number) => {
     if (expandedId === id) {
       setExpandedId(null);
-    } else {
-      const newLearned = todayLearned.includes(id) ? todayLearned : [...todayLearned, id];
-      if (!todayLearned.includes(id)) {
-        setTodayLearned(newLearned);
-        const today = new Date().toLocaleDateString('zh-CN');
-        // Save today's learned expressions
-        localStorage.setItem('english-learned-date', today);
-        localStorage.setItem(`english-learned-${today}`, JSON.stringify(newLearned));
-        localStorage.setItem('english-learned', JSON.stringify(newLearned));
-        const newCount = learnedCount + 1;
-        setLearnedCount(newCount);
-        localStorage.setItem('english-learned-count', newCount.toString());
-        // Update red dot
-        setShowRedDot(newCount < expressions.length);
-      }
-      setExpandedId(id);
+      return;
     }
+
+    // 标记为已学
+    if (!todayLearned.includes(id)) {
+      const newLearned = [...todayLearned, id];
+      setTodayLearned(newLearned);
+      const newCount = newLearned.length;
+      setLearnedCount(newCount);
+      localStorage.setItem(dateKey, JSON.stringify(newLearned));
+      localStorage.setItem('english-learned-count', newCount.toString());
+      setShowRedDot(newCount < DAILY_COUNT);
+    }
+    setExpandedId(id);
   };
 
   const toggleDark = () => {
@@ -271,7 +283,7 @@ export default function Home() {
     localStorage.setItem('english-dark', String(newDark));
   };
 
-  const progress = Math.round((learnedCount / expressions.length) * 100);
+  const progress = Math.round((learnedCount / DAILY_COUNT) * 100);
 
   return (
     <div>
@@ -279,8 +291,8 @@ export default function Home() {
       <div className="mb-8 p-5 rounded-2xl" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
         <div className="flex items-center justify-between mb-3">
           <div>
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{today}</p>
-            <h2 className="text-xl font-bold" style={{ color: 'var(--text)' }}>今日学习</h2>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{todayDate}</p>
+            <h2 className="text-xl font-bold" style={{ color: 'var(--text)' }}>今日推荐</h2>
           </div>
           <button
             onClick={toggleDark}
@@ -310,7 +322,7 @@ export default function Home() {
             />
           </div>
           <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-            已学习 {learnedCount} / {expressions.length} 个表达
+            今日已学 {learnedCount} / {DAILY_COUNT} 个表达
           </p>
         </div>
       </div>
